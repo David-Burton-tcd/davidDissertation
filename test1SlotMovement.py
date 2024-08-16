@@ -18,7 +18,7 @@ def main():
     slot_state(slots)
 
     while True:
-        slots = slot_back_propagation(slots, dummy_vehicle)
+        slots = slot_back_propagation(slots, dummy_vehicle, world)
         draw_all_slots(slots, world)
         world.tick()
 

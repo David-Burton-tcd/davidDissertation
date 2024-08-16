@@ -26,7 +26,7 @@ def main():
     slots, ego_vehicle_slot_index_right= assign_specific_slot(ego_vehicle, slots, 1, 10)
 
     while True:
-        slot_back_propagation(slots, dummy_vehicle)
+        slot_back_propagation(slots, dummy_vehicle, world)
 
         vehicle_control(slots, ego_vehicle, traffic_manager, ego_vehicle_slot_index_right)
         

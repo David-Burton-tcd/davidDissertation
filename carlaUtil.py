@@ -2,6 +2,7 @@ import carla
 import math
 import os
 import re
+import random
 
 class Slot:
     def __init__(self, x, y, z, is_occupied=False, vehicle=None):
@@ -84,10 +85,31 @@ def spawnEgo(blueprint_library, spawn_points, world):
     ego_vehicle_bp = blueprint_library.filter('vehicle.tesla.model3')[0]
     
     # spawning vehicles
-    ego_spawn_point = spawn_points[17]
-    ego_vehicle = world.try_spawn_actor(ego_vehicle_bp, ego_spawn_point)
+    valid_spawn_points = [184, 204, 17]
+
+    ego_spawn_point = random.choice(valid_spawn_points)
+ 
+    ego_vehicle = world.try_spawn_actor(ego_vehicle_bp, spawn_points[ego_spawn_point])
+
+    while not ego_vehicle:
+        ego_spawn_point = random.choice(valid_spawn_points)
+        ego_vehicle = world.try_spawn_actor(ego_vehicle_bp, spawn_points[ego_spawn_point])
     return ego_vehicle
 
+# for larger slot systems
+def show_slots_truncated(slots):
+    # if os.name == 'nt':
+    #     os.system('cls')
+    # else:
+    #     os.system('clear')
+    counter =  0
+
+    for element in slots[1]:
+        counter +=1
+        if element.get_is_occupied():
+            print("Vehicle with id ", element.vehicle, " is at slot ", counter)
+
+# for small slot systems
 def show_slots(slots):
     if os.name == 'nt':
         os.system('cls')
@@ -112,13 +134,43 @@ def show_slots(slots):
         print(left_lane_print, " - ", right_lane_print)
 
 
-def slot_back_propagation(slots, initial_vehicle):
+def slot_back_propagation(slots, initial_vehicle, world):
     new_location = initial_vehicle.get_location()
+    world_map = world.get_map()
+    new_location_waypoint = world_map.get_waypoint(new_location, True, carla.LaneType.Driving)
+    new_location_opposite_lane_waypoint = new_location_waypoint.get_left_lane()
+    if new_location_opposite_lane_waypoint is None:
+        # print("Missing waypoint")
+        failover_slot = slots[0][0].get_loc()
+        new_location_overtake = Slot(failover_slot.x, failover_slot.y, failover_slot.z)
+    else:
+        new_location_opposite_lane_loc = new_location_opposite_lane_waypoint.transform.location
+        new_location_overtake_slot = Slot(new_location_opposite_lane_loc.x, new_location_opposite_lane_loc.y, new_location_opposite_lane_loc.z)
+        new_location_overtake = new_location_overtake_slot.get_loc()
+    
     if new_location.distance(slots[1][1].get_loc()) > 10:
+        # "active" lane
         for i in range(len(slots[1])):
             propagation_loc = slots[1][i].get_loc()
             slots[1][i].set_loc(new_location.x, new_location.y, new_location.z)
             new_location = propagation_loc  
+
+        # ovetaking lane 
+        for j in range(len(slots[0])):
+            propagation_loc = slots[0][j].get_loc()
+
+            if propagation_loc.x is None:
+                # slots[0][j].set_loc(.x, .y, .z)
+                # new_location_overtake = 
+                pass
+            else:
+                # if not isinstance(new_location_overtake, Slot):
+                #     print("I am not a slot ", new_location_overtake)
+                if isinstance(new_location_overtake, Slot):
+                    print("I am a slot ", new_location_overtake, " at slot point ", j)
+                    new_location_overtake = new_location_overtake.get_loc()    
+                slots[0][j].set_loc(new_location_overtake.x, new_location_overtake.y, new_location_overtake.z)
+                new_location_overtake = propagation_loc 
     else:
         return slots
     return slots
@@ -198,6 +250,10 @@ def draw_slots(slots, world):
         loc = slots[1][i].get_loc()
         if slots[1][i].get_is_occupied():
             world.debug.draw_string(loc, 'X', life_time=0.1, color=carla.Color(255,0,0))
+    for i in range(len(slots[0])):
+        loc = slots[0][i].get_loc()
+        if slots[0][i].get_is_occupied():
+            world.debug.draw_string(loc, 'Z', life_time=0.1, color=carla.Color(0,0,255))
 
 def draw_all_slots(slots, world):
     for i in range(len(slots[0])-50):
@@ -211,10 +267,11 @@ def draw_all_slots(slots, world):
 
 
 def vehicle_control(slots, ego_vehicle, traffic_manager, ego_slot_index):
-    ego_slot = slots[1][ego_slot_index] 
+    ego_slot = slots[1][ego_slot_index]
     # if not near slot, speed up!
     if ego_vehicle.get_location().distance(ego_slot.get_loc()) > 15:
         traffic_manager.vehicle_percentage_speed_difference(ego_vehicle, -40)
+        traffic_manager.set_path(ego_vehicle, [ego_slot.get_loc()])
     else:
         traffic_manager.vehicle_percentage_speed_difference(ego_vehicle, 5)
         traffic_manager.set_path(ego_vehicle, [ego_slot.get_loc()])
